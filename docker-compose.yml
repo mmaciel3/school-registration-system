@@ -1,0 +1,36 @@
+services:
+  api_service:
+    build:
+      context: .
+    restart: always
+    container_name: app
+    networks:
+      - application_network
+    ports:
+      - 8080:8080
+    depends_on:
+      mysql_db:
+         condition: service_healthy
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql_db:3306/school
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+
+  mysql_db:
+    image: "mysql:8.0"
+    container_name: mysql_db
+    restart: always
+    networks:
+      - application_network
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      - MYSQL_DATABASE=school
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      timeout: 10s
+      retries: 10
+
+networks:
+  application_network:
