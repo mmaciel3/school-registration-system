@@ -35,7 +35,7 @@ public class Student {
 	@Column(name = "email_address", nullable = false)
 	String emailAddress;
 
-	@ManyToMany(fetch = FetchType.LAZY) //todo evaluate cascading
+	@ManyToMany(fetch = FetchType.LAZY)
 	@JoinTable(
 			name = "course_enrollment",
 			joinColumns = @JoinColumn(name = "student_id"),

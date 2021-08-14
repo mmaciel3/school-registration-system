@@ -1,9 +1,17 @@
 package com.exercise.school.controller;
 
+import com.exercise.school.database.model.Course;
 import com.exercise.school.database.model.Student;
 import com.exercise.school.database.repository.StudentRepository;
-import com.exercise.school.dto.PagedResponse;
 import com.exercise.school.dto.StudentDto;
+import com.exercise.school.dto.StudentPagedResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -18,6 +26,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -32,7 +41,17 @@ public class StudentController {
 	private StudentRepository studentRepository;
 
 	@PostMapping("")
-	public ResponseEntity<Object> registerStudent(@RequestBody StudentDto student) {
+	@Operation(summary = "Register student")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "201", description = "Student registered",
+					content = {@Content(schema = @Schema(implementation = Student.class))}
+			),
+			@ApiResponse(responseCode = "400", description = "A student already exists with the given email address"),
+	})
+	@ResponseStatus(HttpStatus.CREATED)
+	public ResponseEntity<Object> registerStudent(
+			@Parameter(name = "Student registration request", required = true) @RequestBody StudentDto student) {
 		return serviceHandler.processService((responseBuilder) -> {
 			final String emailAddress = student.getEmailAddress();
 			this.studentRepository.findOneByEmailAddress(emailAddress)
@@ -42,41 +61,93 @@ public class StudentController {
 					}, () -> {
 						Student studentModel = student.toModel();
 						this.studentRepository.save((studentModel));
-						responseBuilder.responseBody(studentModel).statusCode(HttpStatus.OK);
+						responseBuilder.responseBody(studentModel).statusCode(HttpStatus.CREATED);
 					});
 		});
 	}
 
 	@GetMapping("")
+	@Operation(summary = "List students")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Students listed",
+					content = {@Content(schema = @Schema(implementation = StudentPagedResponse.class))}
+			)
+	})
 	public ResponseEntity<Object> getStudents(
-			@RequestParam(value = "noCoursesOnly", required = false, defaultValue = "false") boolean noCoursesOnly,
-			@RequestParam(value = "page", required = false, defaultValue = "0") int pageNumber,
-			@RequestParam(value = "size", required = false, defaultValue = "10") int pageSize) {
+			@Parameter(description = "Get only students enrolled in no courses")
+			@RequestParam(value = "noCoursesOnly", required = false, defaultValue = "false")
+					boolean noCoursesOnly,
+			@Parameter(description = "Page number")
+			@RequestParam(value = "page", required = false, defaultValue = "0")
+					int pageNumber,
+			@Parameter(description = "Page size")
+			@RequestParam(value = "size", required = false, defaultValue = "10")
+					int pageSize) {
 
 		return serviceHandler.processService((responseBuilder) -> {
 			Pageable pageable = PageRequest.of(pageNumber, pageSize);
 			Page<Student> response = noCoursesOnly ?
 					this.studentRepository.findStudentsWithNoCourses(pageable) :
 					this.studentRepository.findAll(pageable);
-			responseBuilder.responseBody(new PagedResponse<>(response));
+			responseBuilder.responseBody(new StudentPagedResponse(response));
 		});
 	}
 
 	@GetMapping("/{id}")
-	public ResponseEntity<Object> getStudentById(@PathVariable("id") Long id) {
+	@Operation(summary = "Retrieve student")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Student retrieved",
+					content = {@Content(schema = @Schema(implementation = Student.class))}
+			),
+			@ApiResponse(responseCode = "404", description = "Student not found")
+	})
+	public ResponseEntity<Object> getStudentById(
+			@Parameter(description = "Student ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.studentRepository.findById(id)
 				.ifPresentOrElse(responseBuilder::responseBody, () -> responseBuilder.statusCode(HttpStatus.NOT_FOUND)));
 	}
 
 	@GetMapping("/{id}/courses")
-	public ResponseEntity<Object> getStudentCourses(@PathVariable("id") Long id) {
+	@Operation(summary = "List student courses")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Student courses listed",
+					content = {@Content(array = @ArraySchema(schema = @Schema(implementation = Course.class)))}
+			),
+			@ApiResponse(responseCode = "404", description = "Student not found")
+	})
+	public ResponseEntity<Object> getStudentCourses(
+			@Parameter(description = "Student ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.studentRepository.findById(id)
 				.ifPresentOrElse(student -> responseBuilder.responseBody(student.getEnrolledCourses()),
 						() -> responseBuilder.statusCode(HttpStatus.NOT_FOUND)));
 	}
 
 	@PutMapping("/{id}")
-	public ResponseEntity<Object> updateStudent(@PathVariable("id") Long id, @RequestBody StudentDto student) {
+	@Operation(summary = "Update student")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Student updated",
+					content = {@Content(schema = @Schema(implementation = Student.class))}
+			),
+			@ApiResponse(responseCode = "404", description = "Student not found")
+	})
+	public ResponseEntity<Object> updateStudent(
+			@Parameter(description = "Student ID", required = true)
+			@PathVariable("id")
+					Long id,
+			@Parameter(description = "student", required = true)
+			@RequestBody
+					StudentDto student
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.studentRepository.findById(id)
 				.ifPresentOrElse((studentFromDb) -> {
 					studentFromDb.setFirstName(student.getFirstName());
@@ -88,7 +159,17 @@ public class StudentController {
 	}
 
 	@DeleteMapping("/{id}")
-	public ResponseEntity<Object> deleteStudent(@PathVariable("id") Long id) {
+	@Operation(summary = "Delete student")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "204", description = "Student deleted"),
+			@ApiResponse(responseCode = "404", description = "Student not found")
+	})
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public ResponseEntity<Object> deleteStudent(
+			@Parameter(description = "Student ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.studentRepository.findById(id)
 				.ifPresentOrElse((studentFromDb) -> {
 					this.studentRepository.deleteById(id);

@@ -1,11 +1,19 @@
 package com.exercise.school.controller;
 
-import com.exercise.school.dto.CourseDto;
-import com.exercise.school.dto.EnrollmentRequest;
-import com.exercise.school.dto.PagedResponse;
 import com.exercise.school.database.model.Course;
+import com.exercise.school.database.model.Student;
 import com.exercise.school.database.repository.CourseRepository;
 import com.exercise.school.database.repository.StudentRepository;
+import com.exercise.school.dto.CourseDto;
+import com.exercise.school.dto.CoursePagedResponse;
+import com.exercise.school.dto.EnrollmentRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +28,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -39,45 +48,105 @@ public class CourseController {
 	@Autowired
 	private StudentRepository studentRepository;
 
-	@PostMapping("")
-	public ResponseEntity<Object> registerCourse(@RequestBody CourseDto course) {
-		return serviceHandler.processService((responseBuilder) -> {
-			Course courseModel = course.toModel();
-			this.courseRepository.save(courseModel);
-			responseBuilder.responseBody(courseModel).statusCode(HttpStatus.OK);
-		});
-	}
-
 	@GetMapping("")
+	@Operation(summary = "List courses")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Courses listed",
+					content = {@Content(schema = @Schema(implementation = CoursePagedResponse.class))}
+			)
+	})
 	public ResponseEntity<Object> getCourses(
-			@RequestParam(value = "noStudentsOnly", required = false, defaultValue = "false") boolean noStudentsOnly,
-			@RequestParam(value = "page", required = false, defaultValue = "0") int pageNumber,
-			@RequestParam(value = "size", required = false, defaultValue = "10") int pageSize) {
-
+			@Parameter(description = "Get only courses with no students enrolled")
+			@RequestParam(value = "noStudentsOnly", required = false, defaultValue = "false")
+					boolean noStudentsOnly,
+			@Parameter(description = "Page number")
+			@RequestParam(value = "page", required = false, defaultValue = "0")
+					int pageNumber,
+			@Parameter(description = "Page size")
+			@RequestParam(value = "size", required = false, defaultValue = "10")
+					int pageSize
+	) {
 		return serviceHandler.processService((responseBuilder) -> {
 			Pageable pageable = PageRequest.of(pageNumber, pageSize);
 			Page<Course> response = noStudentsOnly ?
 					this.courseRepository.findCoursesWithNoStudents(pageable) :
 					this.courseRepository.findAll(pageable);
-			responseBuilder.responseBody(new PagedResponse<>(response));
+			responseBuilder.responseBody(new CoursePagedResponse(response));
+		});
+	}
+
+	@PostMapping("")
+	@Operation(summary = "Register course")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "201", description = "Course registered",
+					content = {@Content(schema = @Schema(implementation = Course.class))}
+			)
+	})
+	@ResponseStatus(HttpStatus.CREATED)
+	public ResponseEntity<Object> registerCourse(
+			@Parameter(name = "Course registration request", required = true) @RequestBody CourseDto course) {
+		return serviceHandler.processService((responseBuilder) -> {
+			Course courseModel = course.toModel();
+			this.courseRepository.save(courseModel);
+			responseBuilder.responseBody(courseModel).statusCode(HttpStatus.CREATED);
 		});
 	}
 
 	@GetMapping("/{id}")
-	public ResponseEntity<Object> getCourseById(@PathVariable("id") Long id) {
+	@Operation(summary = "Retrieve course")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Course retrieved",
+					content = {@Content(schema = @Schema(implementation = Course.class))}
+			),
+			@ApiResponse(responseCode = "404", description = "Course not found")
+	})
+	public ResponseEntity<Object> getCourseById(
+			@Parameter(description = "Course ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.courseRepository.findById(id)
 				.ifPresentOrElse(responseBuilder::responseBody, () -> responseBuilder.statusCode(HttpStatus.NOT_FOUND)));
 	}
 
 	@GetMapping("/{id}/students")
-	public ResponseEntity<Object> getCourseStudents(@PathVariable("id") Long id) {
+	@Operation(summary = "List enrolled students")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Enrolled students listed",
+					content = {@Content(array = @ArraySchema(schema = @Schema(implementation = Student.class)))}
+			),
+			@ApiResponse(responseCode = "404", description = "Course not found")
+	})
+	public ResponseEntity<Object> getCourseStudents(
+			@Parameter(description = "Course ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.courseRepository.findById(id)
 				.ifPresentOrElse(course -> responseBuilder.responseBody(course.getEnrolledStudents()),
 						() -> responseBuilder.statusCode(HttpStatus.NOT_FOUND)));
 	}
 
 	@PutMapping("/{id}")
-	public ResponseEntity<Object> updateCourse(@PathVariable("id") Long id, @RequestBody CourseDto course) {
+	@Operation(summary = "Update course")
+	@ApiResponses(value = {
+			@ApiResponse(
+					responseCode = "200", description = "Course updated",
+					content = {@Content(schema = @Schema(implementation = Course.class))}
+			),
+			@ApiResponse(responseCode = "404", description = "Course not found")
+	})
+	public ResponseEntity<Object> updateCourse(
+			@Parameter(description = "Course ID", required = true)
+			@PathVariable("id")
+					Long id,
+			@Parameter(description = "course", required = true)
+			@RequestBody
+					CourseDto course) {
 		return serviceHandler.processService((responseBuilder) -> this.courseRepository.findById(id)
 				.ifPresentOrElse((courseFromDb) -> {
 					courseFromDb.setName(course.getName());
@@ -87,7 +156,17 @@ public class CourseController {
 	}
 
 	@DeleteMapping("/{id}")
-	public ResponseEntity<Object> deleteCourse(@PathVariable("id") Long id) {
+	@Operation(summary = "Delete course")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "204", description = "Course deleted"),
+			@ApiResponse(responseCode = "404", description = "Course not found")
+	})
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public ResponseEntity<Object> deleteCourse(
+			@Parameter(description = "Course ID", required = true)
+			@PathVariable("id")
+					Long id
+	) {
 		return serviceHandler.processService((responseBuilder) -> this.courseRepository.findById(id)
 				.ifPresentOrElse((courseFromDb) -> {
 					this.courseRepository.deleteById(id);
@@ -96,8 +175,21 @@ public class CourseController {
 	}
 
 	@PostMapping("/{id}/enroll")
-	public ResponseEntity<Object> enrollInCourse(@PathVariable("id") Long courseId,
-	                                             @RequestBody EnrollmentRequest enrollmentRequest) {
+	@Operation(summary = "Enroll in course")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "201", description = "Successful enrollment"),
+			@ApiResponse(responseCode = "400", description = "The course is full or the student has exceeded maximum enrolled courses"),
+			@ApiResponse(responseCode = "404", description = "Course not found")
+	})
+	@ResponseStatus(HttpStatus.CREATED)
+	public ResponseEntity<Object> enrollInCourse(
+			@Parameter(description = "Course ID", required = true)
+			@PathVariable("id")
+					Long courseId,
+			@Parameter(description = "Enrollment request", required = true)
+			@RequestBody
+					EnrollmentRequest enrollmentRequest
+	) {
 
 		Long studentId = enrollmentRequest.studentId();
 
@@ -115,7 +207,7 @@ public class CourseController {
 									} else {
 										course.getEnrolledStudents().add(student);
 										this.courseRepository.save(course);
-										responseBuilder.statusCode(HttpStatus.OK);
+										responseBuilder.statusCode(HttpStatus.CREATED);
 									}
 								},
 								() -> {
